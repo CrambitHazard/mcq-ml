@@ -298,6 +298,14 @@ class MCQBiasFeatureExtractor:
             if recent_positions:
                 features['feat_recent_answer_position_mean'] = np.mean(recent_positions)
                 features['feat_answer_position_std'] = np.std(recent_positions) if len(recent_positions) > 1 else 0
+            else:
+                # Default values when no valid positions found
+                features['feat_recent_answer_position_mean'] = 1.5  # Middle position
+                features['feat_answer_position_std'] = 1.0
+        else:
+            # Default values when insufficient history
+            features['feat_recent_answer_position_mean'] = 1.5  # Middle position (0-3 range, so 1.5 is center)
+            features['feat_answer_position_std'] = 1.0  # Moderate variance
         
         # Option frequency patterns (A, B, C, D bias)
         for i in range(min(4, len(options))):

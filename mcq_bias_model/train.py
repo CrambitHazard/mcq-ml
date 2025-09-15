@@ -27,6 +27,7 @@ except ImportError:
 
 from sklearn.model_selection import GroupKFold, cross_val_score, StratifiedKFold
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from random_baseline import RandomBaselineValidator
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 import sklearn.metrics as metrics
@@ -84,60 +85,42 @@ class MCQBiasTrainer:
         
         return requested_type
     
-    def create_per_option_dataset(self, X: np.ndarray, y: np.ndarray, 
-                                 feature_names: List[str]) -> Tuple[np.ndarray, np.ndarray]:
+    def prepare_multiclass_dataset(self, X: np.ndarray, y: np.ndarray, 
+                                  feature_names: List[str]) -> Tuple[np.ndarray, np.ndarray, List[str]]:
         """
-        Transform question-level data into per-option binary classification format.
+        Prepare data for proper multi-class classification.
         
-        Each question with 4 options becomes 4 training examples:
-        - Option A features + is_correct=1 if y==0 else 0
-        - Option B features + is_correct=1 if y==1 else 0
-        - Option C features + is_correct=1 if y==2 else 0
-        - Option D features + is_correct=1 if y==3 else 0
+        CRITICAL FIX: Instead of creating binary per-option classification,
+        we use the original feature matrix directly with 4-class targets (0, 1, 2, 3).
         
         Args:
             X: Feature matrix (n_questions, n_features)
-            y: Target vector (n_questions,) with values 0-3
+            y: Target vector (n_questions,) with values 0-3 (correct option indices)
             feature_names: List of feature names
             
         Returns:
-            (X_options, y_binary) where X_options has shape (n_questions*4, n_features)
+            (X, y, feature_names) - Ready for multi-class classification
         """
-        print("🤖 AI/ML Engineer: Creating per-option binary classification dataset...")
+        print("🤖 AI/ML Engineer: Preparing data for proper multi-class classification...")
+        
+        # Validate target values
+        unique_targets = np.unique(y)
+        if not all(target in [0, 1, 2, 3] for target in unique_targets):
+            raise ValueError(f"Invalid target values: {unique_targets}. Must be in [0, 1, 2, 3]")
         
         n_questions, n_features = X.shape
-        n_options = 4  # A, B, C, D
         
-        # Create expanded feature matrix
-        X_options = np.repeat(X, n_options, axis=0)  # (n_questions*4, n_features)
+        print(f"   ✅ Multi-class dataset ready: {n_questions:,} questions, {n_features} features")
+        print(f"   📊 Target distribution: {dict(zip(*np.unique(y, return_counts=True)))}")
         
-        # Create binary target vector
-        y_binary = np.zeros(n_questions * n_options)
-        
-        for i in range(n_questions):
-            correct_option = y[i]
-            # Set the correct option to 1, others remain 0
-            option_start_idx = i * n_options
-            if 0 <= correct_option < n_options:
-                y_binary[option_start_idx + correct_option] = 1
-        
-        # Add option index as a feature (helps model distinguish option positions)
-        option_indices = np.tile(np.arange(n_options), n_questions).reshape(-1, 1)
-        X_options = np.column_stack([X_options, option_indices])
-        
-        # Update feature names
-        extended_feature_names = feature_names + ['option_index']
-        
-        print(f"   ✅ Created per-option dataset: {X_options.shape[0]:,} examples, {X_options.shape[1]} features")
-        print(f"   📊 Binary target distribution: {np.bincount(y_binary.astype(int))}")
-        
-        return X_options, y_binary, extended_feature_names
+        return X, y, feature_names
     
     def _create_model(self) -> Any:
         """Create the specified model with optimized hyperparameters."""
         if self.model_type == 'lightgbm':
             return lgb.LGBMClassifier(
-                objective='binary',
+                objective='multiclass',  # CRITICAL FIX: Use multiclass instead of binary
+                num_class=4,            # CRITICAL FIX: Specify 4 classes (A, B, C, D)
                 boosting_type='gbdt',
                 num_leaves=31,
                 learning_rate=0.1,
@@ -146,19 +129,21 @@ class MCQBiasTrainer:
                 bagging_freq=5,
                 verbose=-1,
                 random_state=self.random_state,
-                n_estimators=100  # Fast training for 2-hour constraint
+                n_estimators=100,  # Fast training for 2-hour constraint
+                metric='multi_logloss'  # CRITICAL FIX: Use multi-class metric
             )
         
         elif self.model_type == 'xgboost':
             return xgb.XGBClassifier(
-                objective='binary:logistic',
+                objective='multi:softprob',  # CRITICAL FIX: Use multi-class with softmax
+                num_class=4,                 # CRITICAL FIX: Specify 4 classes
                 max_depth=6,
                 learning_rate=0.1,
                 n_estimators=100,
                 subsample=0.8,
                 colsample_bytree=0.8,
                 random_state=self.random_state,
-                eval_metric='logloss',
+                eval_metric='mlogloss',      # CRITICAL FIX: Use multi-class metric
                 verbosity=0
             )
         
@@ -176,7 +161,8 @@ class MCQBiasTrainer:
             return LogisticRegression(
                 random_state=self.random_state,
                 max_iter=1000,
-                solver='lbfgs'
+                solver='lbfgs',
+                multi_class='auto'  # CRITICAL FIX: Enable multi-class
             )
         
         else:
@@ -185,11 +171,13 @@ class MCQBiasTrainer:
     def train(self, X: np.ndarray, y: np.ndarray, feature_names: List[str],
               validation_split: float = 0.2, verbose: bool = True) -> Dict[str, Any]:
         """
-        Train the per-option bias classifier.
+        Train the multi-class MCQ bias classifier.
+        
+        CRITICAL FIX: Now uses proper 4-class classification instead of binary per-option.
         
         Args:
             X: Feature matrix (n_questions, n_features)
-            y: Target vector (n_questions,) with values 0-3
+            y: Target vector (n_questions,) with values 0-3 (correct option indices)
             feature_names: List of feature names
             validation_split: Proportion for validation set
             verbose: Whether to print training progress
@@ -197,40 +185,33 @@ class MCQBiasTrainer:
         Returns:
             Training results dictionary
         """
-        print(f"🤖 AI/ML Engineer: Training {self.model_type} on MCQ bias features...")
+        print(f"🤖 AI/ML Engineer: Training {self.model_type} with proper multi-class classification...")
         
         # Store feature names
         self.feature_names = feature_names
         
-        # Create per-option dataset
-        X_options, y_binary, extended_feature_names = self.create_per_option_dataset(
+        # Prepare multi-class dataset (no more binary per-option nonsense!)
+        X_clean, y_clean, clean_feature_names = self.prepare_multiclass_dataset(
             X, y, feature_names
         )
         
-        # Create validation split
-        n_questions = len(X)
+        # Create validation split at question level
+        n_questions = len(X_clean)
         n_val = int(n_questions * validation_split)
         
         # Split at question level to prevent leakage
-        val_question_indices = np.random.RandomState(self.random_state).choice(
+        val_indices = np.random.RandomState(self.random_state).choice(
             n_questions, size=n_val, replace=False
         )
-        train_question_indices = np.setdiff1d(np.arange(n_questions), val_question_indices)
+        train_indices = np.setdiff1d(np.arange(n_questions), val_indices)
         
-        # Convert to option-level indices
-        train_option_indices = np.concatenate([
-            np.arange(i*4, (i+1)*4) for i in train_question_indices
-        ])
-        val_option_indices = np.concatenate([
-            np.arange(i*4, (i+1)*4) for i in val_question_indices
-        ])
-        
-        X_train, X_val = X_options[train_option_indices], X_options[val_option_indices]
-        y_train, y_val = y_binary[train_option_indices], y_binary[val_option_indices]
+        X_train, X_val = X_clean[train_indices], X_clean[val_indices]
+        y_train, y_val = y_clean[train_indices], y_clean[val_indices]
         
         if verbose:
-            print(f"   📊 Training set: {len(X_train):,} option examples ({len(train_question_indices)} questions)")
-            print(f"   📊 Validation set: {len(X_val):,} option examples ({len(val_question_indices)} questions)")
+            print(f"   📊 Training set: {len(X_train):,} questions")
+            print(f"   📊 Validation set: {len(X_val):,} questions")
+            print(f"   🎯 Target classes: {sorted(np.unique(y_train))}")
         
         # Train model
         start_time = datetime.now()
@@ -240,36 +221,117 @@ class MCQBiasTrainer:
         
         training_time = (datetime.now() - start_time).total_seconds()
         
-        # Evaluate on validation set
-        val_pred_proba = self.model.predict_proba(X_val)[:, 1]  # Probability of being correct
-        val_pred_binary = (val_pred_proba > 0.5).astype(int)
+        # Evaluate on validation set with proper multi-class predictions
+        val_pred_proba = self.model.predict_proba(X_val)  # Shape: (n_questions, 4)
+        val_predictions = np.argmax(val_pred_proba, axis=1)  # Argmax on proper probabilities
         
-        # Convert back to question-level predictions for evaluation
-        question_level_results = self._evaluate_question_level(
-            X_val, y_val, val_question_indices, X, y
+        # Validate probability distributions sum to 1.0
+        prob_sums = np.sum(val_pred_proba, axis=1)
+        if not np.allclose(prob_sums, 1.0, atol=1e-6):
+            print(f"⚠️ Warning: Probability sums not equal to 1.0: {prob_sums[:5]}")
+        else:
+            print(f"   ✅ Probability distributions validated: sum = 1.0 ± {np.std(prob_sums):.6f}")
+        
+        # Calculate metrics
+        question_level_results = self._evaluate_multiclass_performance(
+            y_val, val_predictions, val_pred_proba
         )
         
         # Store training results
         self.training_history = {
             'model_type': self.model_type,
             'training_time_seconds': training_time,
-            'n_training_questions': len(train_question_indices),
-            'n_validation_questions': len(val_question_indices),
-            'n_features': X_train.shape[1],
-            'feature_names': extended_feature_names,
-            'validation_results': question_level_results,
-            'trained_at': datetime.now().isoformat()
+            'n_train_questions': len(X_train),
+            'n_val_questions': len(X_val),
+            'n_features': X_clean.shape[1],
+            'feature_names': clean_feature_names,
+            'validation_results': question_level_results
         }
         
         self.is_trained = True
         
         if verbose:
+            accuracy = question_level_results['accuracy']
+            top2_acc = question_level_results['top2_accuracy']
             print(f"   ✅ Training completed in {training_time:.2f}s")
-            print(f"   🎯 Validation accuracy: {question_level_results['accuracy']:.3f}")
-            print(f"   📊 Random baseline: 0.250 (25%)")
-            print(f"   📈 Improvement: {(question_level_results['accuracy'] - 0.25) / 0.25 * 100:.1f}% over random")
+            print(f"   🎯 Validation accuracy: {accuracy:.1%}")
+            print(f"   🎯 Top-2 accuracy: {top2_acc:.1%}")
+            print(f"   🎯 Improvement over random: {((accuracy - 0.25) / 0.25 * 100):.1f}%")
         
         return self.training_history
+    
+    def _evaluate_multiclass_performance(self, y_true: np.ndarray, y_pred: np.ndarray, 
+                                       y_pred_proba: np.ndarray) -> Dict[str, Any]:
+        """
+        Evaluate multi-class performance with proper random baseline comparison.
+        
+        CRITICAL FIX: Now includes proper random baseline validation and statistical testing.
+        
+        Args:
+            y_true: True labels (0, 1, 2, 3)
+            y_pred: Predicted labels (0, 1, 2, 3)
+            y_pred_proba: Prediction probabilities (n_questions, 4)
+            
+        Returns:
+            Performance metrics dictionary with random baseline comparison
+        """
+        from sklearn.metrics import accuracy_score, classification_report
+        
+        # Basic accuracy
+        accuracy = accuracy_score(y_true, y_pred)
+        
+        # Top-2 accuracy
+        top2_indices = np.argsort(y_pred_proba, axis=1)[:, -2:]  # Top 2 indices
+        top2_accuracy = np.mean([true_label in top2 for true_label, top2 in zip(y_true, top2_indices)])
+        
+        # Class-wise metrics
+        try:
+            class_report = classification_report(y_true, y_pred, output_dict=True, zero_division=0)
+        except:
+            class_report = {}
+        
+        # CRITICAL FIX: Proper random baseline comparison with statistical testing
+        validator = RandomBaselineValidator(n_classes=4)
+        
+        # Get actual class distribution for realistic random baseline
+        class_counts = np.bincount(y_true, minlength=4)
+        class_weights = class_counts / len(y_true) if len(y_true) > 0 else [0.25, 0.25, 0.25, 0.25]
+        
+        # Theoretical random baseline (uniform)
+        theoretical_random = 0.25
+        
+        # Realistic random baseline (considering class imbalance)
+        realistic_random = np.sum(class_weights ** 2)  # Expected accuracy with class imbalance
+        
+        # Statistical comparison to random
+        comparison_results = validator.compare_to_random(y_pred, y_true, "Model")
+        
+        # Calculate improvements
+        improvement_over_theoretical = ((accuracy - theoretical_random) / theoretical_random) * 100
+        improvement_over_realistic = ((accuracy - realistic_random) / realistic_random) * 100
+        
+        return {
+            'accuracy': accuracy,
+            'top2_accuracy': top2_accuracy,
+            'theoretical_random_baseline': theoretical_random,
+            'realistic_random_baseline': realistic_random,
+            'class_distribution': class_counts.tolist(),
+            'class_weights': class_weights.tolist(),
+            'improvement_over_theoretical': improvement_over_theoretical,
+            'improvement_over_realistic': improvement_over_realistic,
+            'statistical_comparison': {
+                'p_value': comparison_results['p_value'],
+                'is_significant': comparison_results['is_significant'],
+                'mcnemar_statistic': comparison_results['mcnemar_statistic'],
+                'confidence_interval_95': comparison_results['model_ci_95']
+            },
+            'n_questions': len(y_true),
+            'predictions': y_pred.tolist(),
+            'true_answers': y_true.tolist(),
+            'class_report': class_report,
+            'mean_confidence': np.mean(np.max(y_pred_proba, axis=1)),
+            'prediction_entropy': np.mean(-np.sum(y_pred_proba * np.log(y_pred_proba + 1e-10), axis=1))
+        }
     
     def _evaluate_question_level(self, X_val_options: np.ndarray, y_val_binary: np.ndarray,
                                 val_question_indices: np.ndarray, X_original: np.ndarray, 
@@ -304,7 +366,9 @@ class MCQBiasTrainer:
     
     def predict(self, X: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Predict correct options for questions using trained model.
+        Predict correct options for questions using trained multi-class model.
+        
+        CRITICAL FIX: Now uses proper multi-class prediction instead of binary per-option.
         
         Args:
             X: Feature matrix (n_questions, n_features)
@@ -312,32 +376,21 @@ class MCQBiasTrainer:
         Returns:
             (predicted_options, prediction_probabilities)
             predicted_options: Array of shape (n_questions,) with values 0-3
-            prediction_probabilities: Array of shape (n_questions, 4) with probabilities
+            prediction_probabilities: Array of shape (n_questions, 4) with probabilities that sum to 1.0
         """
         if not self.is_trained:
             raise ValueError("Model must be trained before making predictions")
         
-        # Create per-option dataset (without using stored feature_names that might have different length)
-        n_questions, n_features = X.shape
-        n_options = 4
+        # Direct multi-class prediction (no more per-option nonsense!)
+        pred_proba = self.model.predict_proba(X)  # Shape: (n_questions, 4)
+        predicted_options = np.argmax(pred_proba, axis=1)  # Argmax on proper probabilities
         
-        # Create expanded feature matrix
-        X_options = np.repeat(X, n_options, axis=0)  # (n_questions*4, n_features)
+        # Validate probability distributions
+        prob_sums = np.sum(pred_proba, axis=1)
+        if not np.allclose(prob_sums, 1.0, atol=1e-6):
+            print(f"⚠️ Warning: Prediction probabilities don't sum to 1.0: {prob_sums[:3]}")
         
-        # Add option index as a feature
-        option_indices = np.tile(np.arange(n_options), n_questions).reshape(-1, 1)
-        X_options = np.column_stack([X_options, option_indices])
-        
-        # Get prediction probabilities
-        pred_proba = self.model.predict_proba(X_options)[:, 1]
-        
-        # Reshape to question format
-        pred_proba_reshaped = pred_proba.reshape(n_questions, 4)
-        
-        # Use argmax to select predicted answers
-        predicted_options = np.argmax(pred_proba_reshaped, axis=1)
-        
-        return predicted_options, pred_proba_reshaped
+        return predicted_options, pred_proba
     
     def cross_validate(self, X: np.ndarray, y: np.ndarray, feature_names: List[str],
                       groups: np.ndarray, cv_folds: int = 5) -> Dict[str, Any]:
@@ -359,35 +412,35 @@ class MCQBiasTrainer:
         # Store feature names
         self.feature_names = feature_names
         
-        # Create per-option dataset
-        X_options, y_binary, extended_feature_names = self.create_per_option_dataset(
+        # Prepare multi-class dataset
+        X_clean, y_clean, clean_feature_names = self.prepare_multiclass_dataset(
             X, y, feature_names
         )
         
-        # Expand groups to match option-level data
-        groups_expanded = np.repeat(groups, 4)
-        
+        # Use groups as-is for question-level cross-validation
         # Group K-Fold to prevent exam leakage
         gkf = GroupKFold(n_splits=cv_folds)
         
         cv_scores = []
         fold_results = []
         
-        for fold, (train_idx, val_idx) in enumerate(gkf.split(X_options, y_binary, groups_expanded)):
+        for fold, (train_idx, val_idx) in enumerate(gkf.split(X_clean, y_clean, groups)):
             print(f"   🔄 Training fold {fold + 1}/{cv_folds}...")
             
-            # Split data
-            X_train_fold, X_val_fold = X_options[train_idx], X_options[val_idx]
-            y_train_fold, y_val_fold = y_binary[train_idx], y_binary[val_idx]
+            # Split data at question level
+            X_train_fold, X_val_fold = X_clean[train_idx], X_clean[val_idx]
+            y_train_fold, y_val_fold = y_clean[train_idx], y_clean[val_idx]
             
             # Train model for this fold
             model_fold = self._create_model()
             model_fold.fit(X_train_fold, y_train_fold)
             
-            # Evaluate at question level
-            val_question_indices = np.unique(val_idx // 4)  # Convert back to question indices
-            question_results = self._evaluate_question_level_cv(
-                model_fold, X_val_fold, y_val_fold, val_question_indices, X, y
+            # Evaluate with multi-class predictions
+            val_pred_proba = model_fold.predict_proba(X_val_fold)
+            val_predictions = np.argmax(val_pred_proba, axis=1)
+            
+            question_results = self._evaluate_multiclass_performance(
+                y_val_fold, val_predictions, val_pred_proba
             )
             
             cv_scores.append(question_results['accuracy'])
@@ -472,11 +525,14 @@ class MCQBiasTrainer:
             print("⚠️ Model doesn't support feature importance")
             return {}
         
-        # Get extended feature names (including option_index)
-        extended_names = self.feature_names + ['option_index']
+        # Use stored feature names from multi-class training
+        if hasattr(self, 'feature_names') and self.feature_names:
+            feature_names = self.feature_names
+        else:
+            feature_names = [f'feature_{i}' for i in range(len(importance_scores))]
         
         # Create importance dictionary
-        importance_dict = dict(zip(extended_names, importance_scores))
+        importance_dict = dict(zip(feature_names, importance_scores))
         
         # Sort by importance
         sorted_importance = sorted(importance_dict.items(), key=lambda x: x[1], reverse=True)

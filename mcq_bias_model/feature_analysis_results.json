@@ -1,0 +1,145 @@
+{
+  "top_15": [
+    "feat_char_len_std",
+    "feat_option_d_frequency",
+    "feat_option_c_frequency",
+    "feat_option_a_frequency",
+    "feat_option_b_frequency",
+    "feat_char_len_mean",
+    "feat_opt_3_char_len",
+    "feat_opt_2_char_len",
+    "feat_opt_1_char_len",
+    "feat_question_position_norm",
+    "feat_question_complexity",
+    "feat_opt_0_char_len",
+    "feat_char_len_min",
+    "feat_char_len_max",
+    "feat_overlap_mean"
+  ],
+  "top_20": [
+    "feat_char_len_std",
+    "feat_option_d_frequency",
+    "feat_option_c_frequency",
+    "feat_option_a_frequency",
+    "feat_option_b_frequency",
+    "feat_char_len_mean",
+    "feat_opt_3_char_len",
+    "feat_opt_2_char_len",
+    "feat_opt_1_char_len",
+    "feat_question_position_norm",
+    "feat_question_complexity",
+    "feat_opt_0_char_len",
+    "feat_char_len_min",
+    "feat_char_len_max",
+    "feat_overlap_mean",
+    "feat_overlap_std",
+    "feat_word_len_std",
+    "feat_char_len_range",
+    "feat_word_len_mean",
+    "feat_overlap_max"
+  ],
+  "top_30": [
+    "feat_char_len_std",
+    "feat_option_d_frequency",
+    "feat_option_c_frequency",
+    "feat_option_a_frequency",
+    "feat_option_b_frequency",
+    "feat_char_len_mean",
+    "feat_opt_3_char_len",
+    "feat_opt_2_char_len",
+    "feat_opt_1_char_len",
+    "feat_question_position_norm",
+    "feat_question_complexity",
+    "feat_opt_0_char_len",
+    "feat_char_len_min",
+    "feat_char_len_max",
+    "feat_overlap_mean",
+    "feat_overlap_std",
+    "feat_word_len_std",
+    "feat_char_len_range",
+    "feat_word_len_mean",
+    "feat_overlap_max"
+  ],
+  "full_ranking": [
+    {
+      "feature": "feat_char_len_std",
+      "importance": 945
+    },
+    {
+      "feature": "feat_option_d_frequency",
+      "importance": 932
+    },
+    {
+      "feature": "feat_option_c_frequency",
+      "importance": 930
+    },
+    {
+      "feature": "feat_option_a_frequency",
+      "importance": 898
+    },
+    {
+      "feature": "feat_option_b_frequency",
+      "importance": 839
+    },
+    {
+      "feature": "feat_char_len_mean",
+      "importance": 638
+    },
+    {
+      "feature": "feat_opt_3_char_len",
+      "importance": 620
+    },
+    {
+      "feature": "feat_opt_2_char_len",
+      "importance": 592
+    },
+    {
+      "feature": "feat_opt_1_char_len",
+      "importance": 589
+    },
+    {
+      "feature": "feat_question_position_norm",
+      "importance": 518
+    },
+    {
+      "feature": "feat_question_complexity",
+      "importance": 516
+    },
+    {
+      "feature": "feat_opt_0_char_len",
+      "importance": 507
+    },
+    {
+      "feature": "feat_char_len_min",
+      "importance": 436
+    },
+    {
+      "feature": "feat_char_len_max",
+      "importance": 403
+    },
+    {
+      "feature": "feat_overlap_mean",
+      "importance": 369
+    },
+    {
+      "feature": "feat_overlap_std",
+      "importance": 356
+    },
+    {
+      "feature": "feat_word_len_std",
+      "importance": 292
+    },
+    {
+      "feature": "feat_char_len_range",
+      "importance": 221
+    },
+    {
+      "feature": "feat_word_len_mean",
+      "importance": 203
+    },
+    {
+      "feature": "feat_overlap_max",
+      "importance": 157
+    }
+  ]
+}

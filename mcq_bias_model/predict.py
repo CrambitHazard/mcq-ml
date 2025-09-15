@@ -15,6 +15,7 @@ warnings.filterwarnings('ignore')
 
 from pipeline import MCQBiasPipeline
 from train import MCQBiasTrainer
+from random_baseline import RandomBaselineValidator
 
 
 class MCQBiasPredictor:
@@ -402,12 +403,38 @@ class MCQBiasPredictor:
                 accuracy = 0.0
                 top2_accuracy = 0.0
             
+            # CRITICAL FIX: Proper random baseline comparison with statistical testing
+            if len(valid_true) > 0:
+                validator = RandomBaselineValidator(n_classes=4)
+                
+                # Get class distribution for realistic baseline
+                class_counts = np.bincount(valid_true, minlength=4)
+                class_weights = class_counts / len(valid_true)
+                realistic_random = np.sum(class_weights ** 2)
+                
+                # Statistical comparison
+                comparison_results = validator.compare_to_random(
+                    np.array(valid_pred), np.array(valid_true), "Model"
+                )
+                
+                improvement_theoretical = ((accuracy - 0.25) / 0.25) * 100
+                improvement_realistic = ((accuracy - realistic_random) / realistic_random) * 100 if realistic_random > 0 else 0
+            else:
+                comparison_results = {}
+                improvement_theoretical = 0
+                improvement_realistic = 0
+                realistic_random = 0.25
+            
             validation_results = {
                 'accuracy_metrics': {
                     'overall_accuracy': accuracy,
                     'top2_accuracy': top2_accuracy,
-                    'random_baseline': 0.25,
-                    'improvement_over_random': (accuracy - 0.25) / 0.25 * 100 if accuracy > 0.25 else 0
+                    'theoretical_random_baseline': 0.25,
+                    'realistic_random_baseline': realistic_random,
+                    'improvement_over_theoretical': improvement_theoretical,
+                    'improvement_over_realistic': improvement_realistic,
+                    'statistical_significance': comparison_results.get('is_significant', False),
+                    'p_value': comparison_results.get('p_value', 1.0)
                 },
                 'prediction_stats': {
                     'total_questions': len(questions),

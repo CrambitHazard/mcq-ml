@@ -1,0 +1,22 @@
+{
+  "dataset": "IndiaBix CA",
+  "n_questions": 1000,
+  "class_distribution": [
+    253,
+    235,
+    272,
+    240
+  ],
+  "all_features": {
+    "accuracy": 0.287,
+    "improvement_percent": 14.79999999999999,
+    "p_value": 0.10609718684505343,
+    "is_significant": "False"
+  },
+  "selected_features": {
+    "accuracy": 0.289,
+    "improvement_percent": 15.59999999999999,
+    "p_value": 0.0913293135362222,
+    "is_significant": "False"
+  }
+}

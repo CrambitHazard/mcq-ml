@@ -11,3 +11,5 @@
 
 .cursor/
 data/
+__pycache__/
+cache/
